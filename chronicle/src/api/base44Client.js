@@ -3,8 +3,8 @@
 //
 // NOTE: This is for prototyping/hackathons. It is not secure authentication.
 
-const LS_USER_KEY = 'chronicle_user';
-const LS_ENTRIES_KEY = 'chronicle_entries';
+const LS_USER_KEY = "chronicle_user";
+const LS_ENTRIES_KEY = "chronicle_entries";
 
 function nowIso() {
   return new Date().toISOString();
@@ -34,19 +34,20 @@ function ensureSeedData() {
   if (Array.isArray(existing) && existing.length > 0) return;
 
   const today = new Date();
-  const yyyyMmDd = (d) => d.toISOString().split('T')[0];
+  const yyyyMmDd = (d) => d.toISOString().split("T")[0];
 
   const seed = [
     {
       id: generateId(),
-      title: 'First entry',
-      content: 'This is a sample entry. Edit or delete it, then start writing your own.',
+      title: "First entry",
+      content:
+        "This is a sample entry. Edit or delete it, then start writing your own.",
       date: yyyyMmDd(today),
-      mood: 'reflective',
-      themes: ['growth'],
+      mood: "reflective",
+      themes: ["growth"],
       milestone: false,
-      lessons_learned: '',
-      ai_insights: '',
+      lessons_learned: "",
+      ai_insights: "",
       created_at: nowIso(),
       updated_at: nowIso(),
     },
@@ -57,10 +58,10 @@ function ensureSeedData() {
 
 function sortEntries(entries, sortSpec) {
   // Supports the app's usage: '-date' (desc) or 'date' (asc)
-  const spec = (sortSpec || '').trim();
+  const spec = (sortSpec || "").trim();
   if (!spec) return entries;
 
-  const desc = spec.startsWith('-');
+  const desc = spec.startsWith("-");
   const field = desc ? spec.slice(1) : spec;
 
   const copy = [...entries];
@@ -71,17 +72,19 @@ function sortEntries(entries, sortSpec) {
     // Dates are YYYY-MM-DD strings, which compare lexicographically.
     if (av == null) return 1;
     if (bv == null) return -1;
-    return desc ? String(bv).localeCompare(String(av)) : String(av).localeCompare(String(bv));
+    return desc
+      ? String(bv).localeCompare(String(av))
+      : String(av).localeCompare(String(bv));
   });
   return copy;
 }
 
 function getUser() {
   const fallback = {
-    id: 'local-user',
-    name: 'You',
-    email: 'local@chronicle.dev',
-    theme_color: 'purple',
+    id: "local-user",
+    name: "You",
+    email: "local@chronicle.dev",
+    theme_color: "purple",
     custom_color: null,
   };
 
@@ -110,19 +113,49 @@ function setEntries(entries) {
 }
 
 async function invokeLLM({ prompt }) {
-  // A very small stub so the UI works without a backend.
-  // If you wire a real backend later, replace this.
-  const text = String(prompt || '');
-  const clipped = text.length > 800 ? `${text.slice(0, 800)}…` : text;
+  try {
+    const response = await fetch(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${import.meta.env.VITE_OPENROUTER_API_KEY}`,
+          "HTTP-Referer": window.location.origin,
+          "X-Title": "Chronicle - Life Story Journal",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "anthropic/claude-3.5-sonnet", // or any other model from OpenRouter
+          messages: [
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          temperature: 0.7,
+          max_tokens: 500,
+        }),
+      },
+    );
 
-  const response =
-    "(Local AI stub)\n\n" +
-    "Here are a couple quick reflections based on what you wrote:\n" +
-    "• What feels most consistent across this entry is the theme of momentum + identity—you're noticing patterns, not just events.\n" +
-    "• If you want a next step, try writing one concrete experiment for tomorrow that matches the person you're trying to become.\n\n" +
-    `Prompt excerpt: ${clipped}`;
+    if (!response.ok) {
+      throw new Error(`OpenRouter API error: ${response.status}`);
+    }
 
-  return { data: response };
+    const data = await response.json();
+    const assistantMessage =
+      data.choices[0]?.message?.content ||
+      "I'm having trouble responding right now.";
+
+    return { data: assistantMessage };
+  } catch (error) {
+    console.error("OpenRouter API error:", error);
+
+    // Fallback response
+    return {
+      data: "I'm having trouble connecting to the AI service right now. Please try again in a moment.",
+    };
+  }
 }
 
 export const base44 = {
@@ -147,7 +180,7 @@ export const base44 = {
     Entry: {
       async list(sortSpec, limit) {
         const all = sortEntries(getEntries(), sortSpec);
-        const limited = typeof limit === 'number' ? all.slice(0, limit) : all;
+        const limited = typeof limit === "number" ? all.slice(0, limit) : all;
         return { data: limited };
       },
       async create(data) {
@@ -164,7 +197,7 @@ export const base44 = {
       async update(id, data) {
         const entries = getEntries();
         const idx = entries.findIndex((e) => e.id === id);
-        if (idx === -1) throw new Error('Entry not found');
+        if (idx === -1) throw new Error("Entry not found");
         const updated = {
           ...entries[idx],
           ...data,

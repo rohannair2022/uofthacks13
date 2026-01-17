@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Plus, Calendar, Search } from 'lucide-react';
+import { Plus, Calendar, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import EntryCard from "../components/journal/EntryCard";
 import WriteEntry from "../components/journal/WriteEntry";
@@ -11,25 +11,27 @@ import { motion, AnimatePresence } from "framer-motion";
 export default function Journal() {
   const [showWriteForm, setShowWriteForm] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterMood, setFilterMood] = useState('all');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterMood, setFilterMood] = useState("all");
   const queryClient = useQueryClient();
 
-  const { data: entries = [], isLoading } = useQuery({
-    queryKey: ['entries'],
-    queryFn: () => base44.entities.Entry.list('-date'),
+  const { data: entriesResponse, isLoading } = useQuery({
+    queryKey: ["entries"],
+    queryFn: () => base44.entities.Entry.list("-date"),
   });
 
+  const entries = entriesResponse?.data || [];
+
   const { data: user } = useQuery({
-    queryKey: ['user'],
+    queryKey: ["user"],
     queryFn: () => base44.auth.me(),
   });
 
   const createEntry = useMutation({
     mutationFn: (data) => base44.entities.Entry.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['entries']);
-      queryClient.invalidateQueries(['user']);
+      queryClient.invalidateQueries(["entries"]);
+      queryClient.invalidateQueries(["user"]);
       setShowWriteForm(false);
     },
   });
@@ -37,7 +39,7 @@ export default function Journal() {
   const updateEntry = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Entry.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['entries']);
+      queryClient.invalidateQueries(["entries"]);
       setShowWriteForm(false);
       setEditingEntry(null);
     },
@@ -46,7 +48,7 @@ export default function Journal() {
   const deleteEntry = useMutation({
     mutationFn: (id) => base44.entities.Entry.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries(['entries']);
+      queryClient.invalidateQueries(["entries"]);
     },
   });
 
@@ -55,11 +57,11 @@ export default function Journal() {
       await updateEntry.mutateAsync({ id: editingEntry.id, data: entryData });
     } else {
       await createEntry.mutateAsync(entryData);
-      
+
       // Update user's total entries count
       if (user) {
         await base44.auth.updateMe({
-          total_entries: (user.total_entries || 0) + 1
+          total_entries: (user.total_entries || 0) + 1,
         });
       }
     }
@@ -70,10 +72,11 @@ export default function Journal() {
     setShowWriteForm(true);
   };
 
-  const filteredEntries = entries.filter(entry => {
-    const matchesSearch = entry.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         entry.content?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesMood = filterMood === 'all' || entry.mood === filterMood;
+  const filteredEntries = entries.filter((entry) => {
+    const matchesSearch =
+      entry.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      entry.content?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesMood = filterMood === "all" || entry.mood === filterMood;
     return matchesSearch && matchesMood;
   });
 
@@ -81,14 +84,14 @@ export default function Journal() {
     <div className="max-w-5xl mx-auto">
       {/* Hero Section */}
       <div className="text-center mb-12">
-        <motion.h1 
+        <motion.h1
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           className="text-5xl font-bold text-white mb-4 text-glow"
         >
           Your Life Story
         </motion.h1>
-        <motion.p 
+        <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.2 }}
@@ -96,20 +99,24 @@ export default function Journal() {
         >
           Document your journey, one memory at a time
         </motion.p>
-        
+
         {user && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.3 }}
             className="flex items-center justify-center gap-8 mt-6"
           >
             <div className="text-center">
-              <div className="text-3xl font-bold text-theme">{user.total_entries || 0}</div>
+              <div className="text-3xl font-bold text-theme">
+                {user.total_entries || 0}
+              </div>
               <div className="text-sm text-slate-500">Entries</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-bold text-theme">{user.writing_streak || 0}</div>
+              <div className="text-3xl font-bold text-theme">
+                {user.writing_streak || 0}
+              </div>
               <div className="text-sm text-slate-500">Day Streak</div>
             </div>
           </motion.div>
@@ -118,7 +125,7 @@ export default function Journal() {
 
       {/* Actions */}
       <div className="flex flex-col md:flex-row gap-4 mb-8">
-        <Button 
+        <Button
           onClick={() => {
             setEditingEntry(null);
             setShowWriteForm(!showWriteForm);
@@ -128,7 +135,7 @@ export default function Journal() {
           <Plus className="w-5 h-5 mr-2" />
           Write New Entry
         </Button>
-        
+
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
           <Input
@@ -180,7 +187,9 @@ export default function Journal() {
           <div className="text-center py-12 border-2 border-dashed border-slate-800 rounded-2xl">
             <Calendar className="w-16 h-16 text-slate-700 mx-auto mb-4" />
             <p className="text-slate-400 text-lg mb-2">No entries yet</p>
-            <p className="text-slate-600">Start documenting your life story today!</p>
+            <p className="text-slate-600">
+              Start documenting your life story today!
+            </p>
           </div>
         ) : (
           filteredEntries.map((entry, index) => (
