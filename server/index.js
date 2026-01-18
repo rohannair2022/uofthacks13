@@ -156,6 +156,57 @@ RETURN ONLY valid JSON (no markdown, no code blocks):
 }
 `;
 
+const LOCATION_AGENT_PROMPT = `
+You are a location-selection agent.
+
+Your task:
+1. Ask the user what kind of place they want to visit.
+2. Based on their answer, select ONE state from the world.
+3. Respond with ONLY valid JSON.
+4. DO NOT include explanations, markdown, or extra text.
+
+JSON schema (strict):
+{
+  "country": "string",
+  "state": "string",
+  "lat": number,
+  "long": number
+}
+
+Rules:
+- Output must be valid JSON.
+- No markdown.
+- No comments.
+- No extra keys.
+`;
+
+const executeLocationAgent = async (userInput) => {
+  const response = await fetch(
+    "https://openrouter.ai/api/v1/chat/completions",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${API_KEY}`,
+        "HTTP-Referer": SITE_URL,
+        "X-Title": SITE_NAME,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        temperature: 0.3,
+        max_tokens: 200,
+        messages: [
+          { role: "system", content: LOCATION_AGENT_PROMPT },
+          { role: "user", content: userInput },
+        ],
+      }),
+    },
+  );
+
+  const data = await response.json();
+  return JSON.parse(data.choices[0].message.content);
+};
+
 // --- PARALLEL AGENT EXECUTOR ---
 const executeAgent = async (prompt, agentName, location, country) => {
   try {

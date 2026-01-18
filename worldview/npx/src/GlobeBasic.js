@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import Globe from "react-globe.gl";
 import DetailedMapExplorer from "./DetailedMapExplorer";
-import * as THREE from "three";
 
 export default function GlobeExplorer() {
   const globeEl = useRef();
@@ -179,6 +178,7 @@ export default function GlobeExplorer() {
           pointLng="lng"
           pointColor={() => "yellow"}
           pointRadius={0.15}
+          pointAltitude={0.01}
           pointLabel="name"
           onPointClick={handleStateClick}
           onZoom={handleZoom}

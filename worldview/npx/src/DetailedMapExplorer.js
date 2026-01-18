@@ -149,6 +149,16 @@ export default function DetailedMapExplorer({ state, onClose }) {
       },
     ).addTo(map);
 
+    // Leaflet sometimes renders a blank/grey map when the container was just mounted
+    // (common in modals/overlays). This forces a proper reflow.
+    setTimeout(() => {
+      try {
+        map.invalidateSize();
+      } catch (e) {
+        // no-op
+      }
+    }, 0);
+
     mapInstanceRef.current = map;
   }
 
@@ -213,7 +223,7 @@ export default function DetailedMapExplorer({ state, onClose }) {
       .join(",");
 
     const body = `
-[out:json][timeout:30];
+[out:json][timeout:100];
 (
   ${selectors.map((s) => `${s}(${bbox});`).join("\n  ")}
 );
@@ -229,7 +239,10 @@ out center 50;
 
       if (!res.ok) {
         if (res.status === 504) {
-          const fallbackBody = body.replace("out center 50;", "out center 30;");
+          const fallbackBody = body.replace(
+            "out center 50;",
+            "out center 100;",
+          );
           const fallbackRes = await fetch(
             "https://overpass-api.de/api/interpreter",
             {
@@ -334,7 +347,7 @@ out center 50;
 
       const list = Array.from(unique.values())
         .sort((a, b) => b.rating - a.rating || a.distanceKm - b.distanceKm)
-        .slice(0, 30);
+        .slice(0, 100);
 
       setPlaces(list);
       setStatus(
@@ -372,96 +385,72 @@ out center 50;
     searchTimeoutRef.current = setTimeout(async () => {
       setSearchingCities(true);
       try {
-        // Search for places within the state
-        const res = await fetch(
+        // Nominatim (OpenStreetMap) geocoding
+        // IMPORTANT:
+        // - Don't set a custom `User-Agent` header in the browser: it's a forbidden header.
+        //   Adding it triggers a CORS preflight that Nominatim will reject, making search "not work".
+        // - Don't hard-bound results to the current state viewbox: that blocks global searches
+        //   (e.g., typing "Paris" while exploring Ontario).
+        const url =
           `https://nominatim.openstreetmap.org/search?` +
-            `q=${encodeURIComponent(query)}` +
-            `&format=json&limit=20&addressdetails=1&` +
-            `&bounded=1&viewbox=${state.lng - 2},${state.lat + 2},${state.lng + 2},${state.lat - 2}`,
-          {
-            headers: {
-              "User-Agent": "TravelMapApp/1.0",
-            },
-          },
-        );
+          `q=${encodeURIComponent(query)}` +
+          `&format=jsonv2&addressdetails=1&limit=20&accept-language=en`;
+
+        const res = await fetch(url);
 
         if (!res.ok) throw new Error("City search failed");
 
         const data = await res.json();
 
-        // Filter to show only cities/towns within the state
-        const cities = data
+        // Keep place-like results.
+        // NOTE: Big cities (Toronto, NYC, etc.) often come back as administrative boundaries
+        // (class=boundary, type=administrative). If we filter too strictly, they disappear.
+        const cities = (Array.isArray(data) ? data : [])
           .filter((item) => {
-            // Only include cities, towns, villages, municipalities
-            const isPlace =
-              item.type === "city" ||
-              item.type === "town" ||
-              item.type === "village" ||
-              item.type === "municipality" ||
-              item.type === "administrative" ||
+            const addrType = (
+              item.addresstype ||
+              item.type ||
+              ""
+            ).toLowerCase();
+            const okAddrTypes = [
+              "city",
+              "town",
+              "village",
+              "municipality",
+              "county",
+              "state",
+              "province",
+              "region",
+            ];
+            const isAdminBoundary =
+              item.class === "boundary" && item.type === "administrative";
+            return (
               item.class === "place" ||
-              (item.category && item.category.includes("administrative"));
-
-            // Check if it's in the current state/province
-            const address = item.address;
-            const inState =
-              address?.state === state.name ||
-              address?.province === state.name ||
-              address?.region === state.name ||
-              address?.county?.includes(state.name) ||
-              (address?.state && state.name.includes(address.state));
-
-            // Also accept any place in the country if state not found
-            const inCountry = address?.country === state.country;
-
-            return isPlace && (inState || inCountry);
+              okAddrTypes.includes(addrType) ||
+              isAdminBoundary
+            );
           })
           .map((item) => ({
-            name: item.display_name.split(",")[0],
-            fullName: item.display_name,
+            name:
+              item.name ||
+              String(item.display_name || "").split(",")[0] ||
+              "Unknown",
+            fullName: item.display_name || "",
             lat: parseFloat(item.lat),
             lon: parseFloat(item.lon),
           }))
+          .filter((c) => Number.isFinite(c.lat) && Number.isFinite(c.lon))
           .filter(
             (city, index, self) =>
-              // Remove duplicates by name
-              index === self.findIndex((c) => c.name === city.name),
+              index === self.findIndex((c) => c.fullName === city.fullName),
           )
           .slice(0, 10);
 
         setCitySuggestions(cities);
       } catch (err) {
         console.warn("City search error:", err);
-        // Fallback: Try a simpler search without bounding box
-        try {
-          const fallbackRes = await fetch(
-            `https://nominatim.openstreetmap.org/search?` +
-              `city=${encodeURIComponent(query)}` +
-              `&state=${encodeURIComponent(state.name)}` +
-              `&country=${encodeURIComponent(state.country)}` +
-              `&format=json&limit=10`,
-            {
-              headers: {
-                "User-Agent": "TravelMapApp/1.0",
-              },
-            },
-          );
-
-          if (fallbackRes.ok) {
-            const fallbackData = await fallbackRes.json();
-            const fallbackCities = fallbackData.map((item) => ({
-              name: item.display_name.split(",")[0],
-              fullName: item.display_name,
-              lat: parseFloat(item.lat),
-              lon: parseFloat(item.lon),
-            }));
-            setCitySuggestions(fallbackCities);
-          } else {
-            setCitySuggestions([]);
-          }
-        } catch {
-          setCitySuggestions([]);
-        }
+        // Fallback: clear suggestions
+        setCitySuggestions([]);
       } finally {
         setSearchingCities(false);
       }
@@ -481,7 +470,7 @@ out center 50;
         .join(",");
 
       const overpassQuery = `
-        [out:json][timeout:30];
+        [out:json][timeout:100];
         (
           node["place"="city"](${bbox});
           node["place"="town"](${bbox});
@@ -535,6 +524,13 @@ out center 50;
       mapInstanceRef.current.setView([city.lat, city.lon], 12, {
         animate: true,
       });
+
+      // Safety: ensure tiles repaint after moving.
+      try {
+        mapInstanceRef.current.invalidateSize();
+      } catch (e) {
+        // no-op
+      }
     }
 
     runSearch(city.lat, city.lon);
@@ -617,11 +613,17 @@ out center 50;
               <span style={{ fontSize: 20 }}>🔍</span>
               <input
                 type="text"
-                placeholder={`Search cities in ${state.name}...`}
+                placeholder="Search any city / region / country…"
                 value={citySearch}
                 onChange={(e) => {
                   setCitySearch(e.target.value);
                   searchCities(e.target.value);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && citySuggestions.length > 0) {
+                    e.preventDefault();
+                    selectCity(citySuggestions[0]);
+                  }
                 }}
                 style={{
                   flex: 1,
